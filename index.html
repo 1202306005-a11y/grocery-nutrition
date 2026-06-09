@@ -6,7 +6,7 @@
     <title>Grocery Nutrition - Analisis Gizi</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@800&family=Poppins:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght=800&family=Poppins:wght=400;700&display=swap');
 
         * { box-sizing: border-box; }
         
@@ -111,7 +111,10 @@
             border-radius: 15px; display: flex; align-items: center; justify-content: center;
             text-align: center; font-size: 12px; font-weight: bold; padding: 10px;
         }
-        .res-product-name { font-size: 42px; font-weight: 800; text-transform: uppercase; }
+        .res-img-placeholder img {
+            width: 100%; height: 100%; object-fit: cover; border-radius: 15px;
+        }
+        .res-product-name { font-size: 32px; font-weight: 800; text-transform: uppercase; }
 
         .res-grid {
             display: grid;
@@ -179,7 +182,7 @@
         <div class="res-footer">
             <div class="footer-label">📋 PERINGATAN KESEHATAN</div>
             <div class="footer-text" id="vAnalisis">
-                ini berisi tentang manfaat dari kandungan kandungan diatas, dan ada juga peringatan jika kandungan itu melebihi batas harian sesuai kemeskes/who
+                Menghitung analisis gizi...
             </div>
             <button onclick="location.reload()" style="margin-top:20px; padding:10px 20px; cursor:pointer; border-radius:10px; border:none; font-weight:bold;">KEMBALI SCAN</button>
         </div>
@@ -194,26 +197,95 @@
     html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
         html5QrCode.stop();
         prosesBarcode(decodedText);
+    }).catch(err => {
+        console.log("Kamera tidak diizinkan atau tidak ditemukan.");
     });
 
     function prosesBarcode(barcode) {
         if(!barcode) return;
 
-        // Simulasi Fetch Data (Anda bisa hubungkan ke API OpenFoodFacts)
-        // Menghilangkan Dasbor, Menampilkan Hasil
-        document.getElementById('dashboard').style.display = 'none';
-        document.getElementById('result-page').style.display = 'block';
-
-        // Mengisi Data (Contoh Statis)
-        document.getElementById('pNama').innerText = "SAMYANG CHEESE";
-        document.getElementById('v1').innerText = "550 kkal";
-        document.getElementById('v2').innerText = "1290 mg";
-        document.getElementById('v3').innerText = "5 g";
-        document.getElementById('v4').innerText = "9 g";
-        document.getElementById('v5').innerText = "84 g";
-        document.getElementById('v6').innerText = "16 g";
+        // Tampilkan pesan loading sementara mengambil data dari internet
+        document.getElementById('manualCode').value = "Memuat data...";
         
-        document.getElementById('vAnalisis').innerHTML = "⚠️ <b>PERINGATAN:</b> Kandungan Garam (Natrium) pada produk ini sangat tinggi (1290mg). Batas maksimal harian WHO adalah 2000mg. Konsumsi berlebih berisiko menyebabkan Hipertensi.";
+        // Ambil data asli dari API OpenFoodFacts secara Real-Time
+        fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`)
+            .then(response => response.json())
+            .then(data => {
+                // Sembunyikan Dashboard, Tampilkan Halaman Hasil
+                document.getElementById('dashboard').style.display = 'none';
+                document.getElementById('result-page').style.display = 'block';
+
+                if (data.status === 1) {
+                    const produk = data.product;
+                    const nutrisi = produk.nutriments || {};
+
+                    // 1. Tampilkan Nama Produk
+                    document.getElementById('pNama').innerText = produk.product_name || "PRODUK TANPA NAMA";
+
+                    // 2. Tampilkan Gambar Produk jika ada di database
+                    if (produk.image_front_small_url) {
+                        document.getElementById('pImg').innerHTML = `<img src="${produk.image_front_small_url}" alt="Produk">`;
+                    } else {
+                        document.getElementById('pImg').innerText = "NO IMAGE";
+                    }
+
+                    // 3. Ambil Nilai Gizi per 100g (Garam menggunakan sodium)
+                    const kalori = Math.round(nutrisi['energy-kcal_100g'] || 0);
+                    const sodium = Math.round(nutrisi.sodium_100g * 1000 || 0); // diubah ke mg
+                    const gula = Math.round(nutrisi.sugars_100g || 0);
+                    const protein = Math.round(nutrisi.protein_100g || 0);
+                    const karbo = Math.round(nutrisi.carbohydrates_100g || 0);
+                    const lemak = Math.round(nutrisi.fat_100g || 0);
+
+                    // Masukkan ke box grid
+                    document.getElementById('v1').innerText = kalori + " kkal";
+                    document.getElementById('v2').innerText = sodium + " mg";
+                    document.getElementById('v3').innerText = gula + " g";
+                    document.getElementById('v4').innerText = protein + " g";
+                    document.getElementById('v5').innerText = karbo + " g";
+                    document.getElementById('v6').innerText = lemak + " g";
+
+                    // 4. Logika Analisis Peringatan Kesehatan Otomatis (Standar Kemenkes/WHO)
+                    let teksAnalisis = `Produk ini mengandung <b>${kalori} kkal kalori</b> per 100 gram.<br><br>`;
+                    let dapatPeringatan = false;
+
+                    // Cek batas garam tinggi (>600mg per 100g)
+                    if (sodium > 600) {
+                        teksAnalisis += "⚠️ <b>PERINGATAN GARAM TINGGI:</b> Kandungan natrium/garam sangat tinggi. Batas konsumsi garam harian maksimal menurut Kemenkes RI adalah 2000 mg (1 sendok teh). Konsumsi berlebih memicu Hipertensi.<br><br>";
+                        dapatPeringatan = true;
+                    }
+                    // Cek batas gula tinggi (>15g per 100g)
+                    if (gula > 15) {
+                        teksAnalisis += "⚠️ <b>PERINGATAN GULA TINGGI:</b> Makanan ini tinggi gula. Batas konsumsi gula harian maksimal Kemenkes RI adalah 50 gram (4 sendok makan). Konsumsi gula berlebih dapat memicu Diabetes Tipe 2 dan Obesitas.<br><br>";
+                        dapatPeringatan = true;
+                    }
+                    // Cek batas lemak jenuh/tinggi (>20g per 100g)
+                    if (lemak > 20) {
+                        teksAnalisis += "⚠️ <b>PERINGATAN LEMAK TINGGI:</b> Kandungan lemak pada makanan ini cukup tinggi. Batas konsumsi lemak harian maksimal Kemenkes RI adalah 67 gram. Konsumsi berlebih berisiko menyumbat pembuluh darah dan memicu Kolesterol tinggi.<br><br>";
+                        dapatPeringatan = true;
+                    }
+
+                    // Jika produk tergolong aman/sehat
+                    if (!dapatPeringatan) {
+                        teksAnalisis += "✅ <b>INFO KESEHATAN:</b> Kandungan gula, garam, dan lemak dalam batas normal per 100g. Tetap konsumsi secara bijak dan kombinasikan dengan makanan segar bergizi seimbang sesuai anjuran Isi Piringku Kemenkes.";
+                    }
+
+                    document.getElementById('vAnalisis').innerHTML = teksAnalisis;
+
+                } else {
+                    // Jika barcode tidak terdaftar di database dunia
+                    document.getElementById('pNama').innerText = "PRODUK TIDAK DIKENAL";
+                    document.getElementById('pImg').innerText = "??";
+                    document.getElementById('vAnalisis').innerHTML = `❌ Barcode <b>${barcode}</b> tidak ditemukan di database online.<br><br>Gunakan fitur ketik manual atau pastikan kemasan produk memiliki barcode standar retail yang valid.`;
+                    
+                    // Reset grid jadi strip
+                    for(let i=1; i<=6; i++) { document.getElementById('v'+i).innerText = "-"; }
+                }
+            })
+            .catch(error => {
+                console.error("Error mengambil data:", error);
+                alert("Gagal koneksi internet atau server database sibuk.");
+            });
     }
 </script>
 
